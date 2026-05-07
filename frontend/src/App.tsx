@@ -15,6 +15,7 @@ import AgentsPanel from './components/AgentsPanel'
 import ChatPanel from './components/ChatPanel'
 import ProfilesPanel from './components/ProfilesPanel'
 import TokenCostsPanel from './components/TokenCostsPanel'
+import CCCostsPanel from './components/CCCostsPanel'
 import CorrectionsPanel from './components/CorrectionsPanel'
 import PatternsPanel from './components/PatternsPanel'
 import SudoPanel from './components/SudoPanel'
@@ -37,6 +38,7 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'chat': return <ChatPanel />
     case 'profiles': return <ProfilesPanel />
     case 'token-costs': return <TokenCostsPanel />
+    case 'cc-costs': return <CCCostsPanel />
     case 'corrections': return <CorrectionsPanel />
     case 'patterns': return <PatternsPanel />
     case 'sudo': return <SudoPanel />
@@ -61,6 +63,7 @@ const GRID_CLASS: Record<TabId, string> = {
   chat: 'grid-cols-1',  // Full width for chat
   profiles: 'grid-cols-1',
   'token-costs': 'grid-cols-1 lg:grid-cols-2',
+  'cc-costs': 'grid-cols-1 lg:grid-cols-2',
   corrections: 'grid-cols-1',
   patterns: 'grid-cols-1 lg:grid-cols-2',
   sudo: 'grid-cols-1 lg:grid-cols-2',
