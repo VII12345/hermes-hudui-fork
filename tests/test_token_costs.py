@@ -125,6 +125,77 @@ def test_token_costs_reports_actual_deltas_cache_savings_and_top_sessions(
     assert data["trend_summary"]["delta_usd"] == 0.92
 
 
+def test_anthropic_opus_4x_and_fable5_pricing(tmp_path: Path, monkeypatch) -> None:
+    """Opus 4.x models use $5/$25 tier; Fable 5 uses $10/$50 tier.
+
+    Regression guard: claude-opus-4-6 was previously priced at the old $15/$75
+    Opus 3 rate. Verify the corrected $5/$25 Opus 4.x rate and that Fable 5 and
+    Sonnet 5 resolve to their own distinct tiers.
+    """
+    hermes_dir = tmp_path / "hermes"
+    hermes_dir.mkdir()
+    db_path = hermes_dir / "state.db"
+    _make_state_db(db_path)
+    now = datetime.now()
+
+    # 1M input + 100k output with each model — easy math
+    for model_id in ("claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-4-5"):
+        _insert_session(
+            db_path,
+            id=f"opus-{model_id}",
+            source="cli",
+            title=f"Opus test {model_id}",
+            started_at=(now.timestamp()),
+            model=model_id,
+            input_tokens=1_000_000,
+            output_tokens=100_000,
+            actual_cost_usd=None,
+        )
+
+    _insert_session(
+        db_path,
+        id="fable5",
+        source="cli",
+        title="Fable 5 test",
+        started_at=now.timestamp(),
+        model="claude-fable-5",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        actual_cost_usd=None,
+    )
+
+    _insert_session(
+        db_path,
+        id="sonnet5",
+        source="cli",
+        title="Sonnet 5 test",
+        started_at=now.timestamp(),
+        model="claude-sonnet-5",
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        actual_cost_usd=None,
+    )
+
+    monkeypatch.setenv("HERMES_HOME", str(hermes_dir))
+    data = asyncio.run(get_token_costs())
+
+    # Opus 4.x: input=$5/MTok, output=$25/MTok -> 1M*5 + 0.1M*25 = 5.00 + 2.50 = 7.50 each
+    opus_expected = 5.00 + 2.50
+    for model_id in ("claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-4-5"):
+        model = next(m for m in data["by_model"] if m["model"] == model_id)
+        assert model["estimated_cost_usd"] == opus_expected, (
+            f"{model_id}: expected ${opus_expected} (Opus 4.x tier), got ${model['estimated_cost_usd']}"
+        )
+
+    # Fable 5: input=$10/MTok, output=$50/MTok -> 1M*10 + 0.1M*50 = 10.00 + 5.00 = 15.00
+    fable = next(m for m in data["by_model"] if m["model"] == "claude-fable-5")
+    assert fable["estimated_cost_usd"] == 15.00
+
+    # Sonnet 5: input=$2/MTok, output=$10/MTok -> 1M*2 + 0.1M*10 = 2.00 + 1.00 = 3.00
+    sonnet5 = next(m for m in data["by_model"] if m["model"] == "claude-sonnet-5")
+    assert sonnet5["estimated_cost_usd"] == 3.00
+
+
 def test_token_costs_handles_old_schema_without_actual_cost(
     tmp_path: Path, monkeypatch
 ) -> None:

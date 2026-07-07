@@ -19,11 +19,15 @@ except TypeError:
     router = _NoopRouter()
 
 # ── Pricing per 1M tokens (USD) ──────────────────────────
-# Source: https://www.anthropic.com/pricing (April 2026)
+# Source: https://platform.claude.com/docs/en/about-claude/models/overview (July 2026)
 # Source: https://openai.com/api/pricing/ (April 2026)
 
 # Shared pricing tiers (reused by aliases below)
-_SONNET = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "reasoning": 3.00}
+_SONNET_4X = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "reasoning": 3.00}
+_SONNET = _SONNET_4X  # legacy alias kept for non-Anthropic models below
+_OPUS_4X = {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25, "reasoning": 5.00}
+_FABLE_5 = {"input": 10.00, "output": 50.00, "cache_read": 1.00, "cache_write": 12.50, "reasoning": 10.00}
+_SONNET_5 = {"input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.50, "reasoning": 2.00}
 _GPT52 = {"input": 1.75, "output": 14.00, "cache_read": 0.88, "cache_write": 1.75, "reasoning": 1.75}
 _O_MINI = {"input": 1.10, "output": 4.40, "cache_read": 0.55, "cache_write": 1.10, "reasoning": 1.10}
 _DEEPSEEK_V3 = {"input": 0.27, "output": 1.10, "cache_read": 0.07, "cache_write": 0.27, "reasoning": 0.27}
@@ -33,13 +37,30 @@ _LLAMA = {"input": 0.10, "output": 0.10, "cache_read": 0.025, "cache_write": 0.1
 _FREE = {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0, "reasoning": 0.0}
 
 MODEL_PRICING: dict[str, dict] = {
-    # Anthropic
-    "claude-opus-4-6": {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75, "reasoning": 15.00},
-    "claude-sonnet-4-6": _SONNET,
+    # Anthropic — Fable / Mythos 5 ($10/$50 per MTok)
+    "claude-fable-5": _FABLE_5,
+    "claude-mythos-5": _FABLE_5,
+    "claude-mythos-preview": _FABLE_5,
+    # Anthropic — Opus 4.x ($5/$25 per MTok; 4.5-4.8 share this tier)
+    # Note: Opus 4.1 and earlier used a higher $15/$75 tier (now deprecated).
+    "claude-opus-4-8": _OPUS_4X,
+    "claude-opus-4-7": _OPUS_4X,
+    "claude-opus-4-6": _OPUS_4X,
+    "claude-opus-4-5": _OPUS_4X,
+    # Anthropic — Sonnet 5 (intro promo: $2/$10 through Aug 31 2026; rises to $3/$15 Sep 1)
+    "claude-sonnet-5": _SONNET_5,
+    # Anthropic — Sonnet 4.x ($3/$15 per MTok)
+    "claude-sonnet-4-6": _SONNET_4X,
+    "claude-sonnet-4-5": _SONNET_4X,
+    "claude-sonnet-4": _SONNET_4X,
+    # Anthropic — Haiku 4.5 ($1/$5 per MTok)
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00, "cache_read": 0.10, "cache_write": 1.25, "reasoning": 1.00},
+    # Anthropic — Haiku 3.5 ($0.80/$4 per MTok, retired on most platforms)
     "claude-haiku-3-5": {"input": 0.80, "output": 4.00, "cache_read": 0.08, "cache_write": 1.00, "reasoning": 0.80},
-    "claude-4-sonnet": _SONNET,
-    "claude-3-7-sonnet": _SONNET,
-    "claude-3.7-sonnet": _SONNET,
+    # Legacy aliases (keep for sessions that logged old model strings)
+    "claude-4-sonnet": _SONNET_4X,
+    "claude-3-7-sonnet": _SONNET_4X,
+    "claude-3.7-sonnet": _SONNET_4X,
     # OpenAI
     "gpt-5.4-pro": {"input": 30.00, "output": 180.00, "cache_read": 15.00, "cache_write": 30.00, "reasoning": 30.00},
     "gpt-5.4": {"input": 2.50, "output": 15.00, "cache_read": 1.25, "cache_write": 2.50, "reasoning": 2.50},
