@@ -101,7 +101,7 @@ FastAPI Backend (Python)
 
 **Version strings:** Must stay in sync across `pyproject.toml`, `App.tsx` status bar, `BootScreen.tsx`, and `CHANGELOG.md`.
 
-**Token costs:** Hardcoded `MODEL_PRICING` in `backend/api/token_costs.py`. Falls back to Claude Opus pricing for unknown models.
+**Token costs:** Hardcoded `MODEL_PRICING` in `backend/api/token_costs.py`. Unknown models fall back to `DEFAULT_PRICING` (`_FREE`) and are labelled `unpriced (<model>)` — they report **$0**, not an approximation. Adding a model means adding an entry; `test_current_anthropic_models_are_all_priced` guards against new models silently reading as free.
 
 **Sudo collector:** `backend/collectors/sudo.py` mines `state.db` tool-output messages via FTS for sudo command executions, parses `config.yaml` for approval/security settings, and tails `logs/gateway.log` for explicitly approved commands. Outcome classification: `exit_code=-1` + "approval" in error = blocked; password error in output = failed; `exit_code=0` = success.
 

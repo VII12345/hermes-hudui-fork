@@ -1,9 +1,9 @@
 import asyncio
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from backend.api.token_costs import get_token_costs
+from backend.api.token_costs import _SONNET_5_STANDARD, _get_pricing, get_token_costs
 
 
 def _make_state_db(path: Path, *, include_actual_cost: bool = True) -> None:
@@ -194,6 +194,61 @@ def test_anthropic_opus_4x_and_fable5_pricing(tmp_path: Path, monkeypatch) -> No
     # Sonnet 5: input=$2/MTok, output=$10/MTok -> 1M*2 + 0.1M*10 = 2.00 + 1.00 = 3.00
     sonnet5 = next(m for m in data["by_model"] if m["model"] == "claude-sonnet-5")
     assert sonnet5["estimated_cost_usd"] == 3.00
+
+
+def test_current_anthropic_models_are_all_priced() -> None:
+    """No current Anthropic model may fall through to the unpriced ($0) default.
+
+    Regression guard: before this was fixed, every model except claude-opus-4-6
+    resolved to `unpriced`, silently reporting $0 in the Costs tab.
+    """
+    for model_id in (
+        "claude-opus-5",
+        "claude-fable-5",
+        "claude-mythos-5",
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-opus-4-5",
+        "claude-sonnet-5",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+    ):
+        pricing, matched = _get_pricing(model_id)
+        assert not matched.startswith("unpriced"), f"{model_id} resolved to {matched}"
+        assert pricing["input"] > 0 and pricing["output"] > 0, f"{model_id} priced at $0"
+
+
+def test_legacy_opus_keeps_the_15_75_tier() -> None:
+    """Opus 4.1/4.0 predate the $5/$25 tier and must not be repriced downward."""
+    for model_id in ("claude-opus-4-1", "claude-opus-4-0"):
+        pricing, matched = _get_pricing(model_id)
+        assert matched == model_id
+        assert pricing["input"] == 15.00 and pricing["output"] == 75.00
+
+
+def test_opus_5_uses_the_opus_5_25_tier() -> None:
+    pricing, matched = _get_pricing("claude-opus-5")
+    assert matched == "claude-opus-5"
+    assert pricing["input"] == 5.00
+    assert pricing["output"] == 25.00
+
+
+def test_sonnet_5_intro_pricing_expires_2026_09_01() -> None:
+    """Tripwire: fails once Sonnet 5's introductory rate lapses.
+
+    The $2/$10 rate is introductory through 2026-08-31; the standard tier is
+    $3/$15. A static table can't tell the two eras apart, so this test forces
+    the switch to be a deliberate edit rather than silent drift.
+    """
+    pricing, _ = _get_pricing("claude-sonnet-5")
+    if date.today() < date(2026, 9, 1):
+        assert pricing["input"] == 2.00 and pricing["output"] == 10.00
+    else:
+        assert pricing == _SONNET_5_STANDARD, (
+            "Sonnet 5 introductory pricing expired 2026-08-31 — point "
+            "MODEL_PRICING['claude-sonnet-5'] at _SONNET_5_STANDARD ($3/$15)."
+        )
 
 
 def test_token_costs_handles_old_schema_without_actual_cost(

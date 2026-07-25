@@ -26,8 +26,15 @@ except TypeError:
 _SONNET_4X = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "reasoning": 3.00}
 _SONNET = _SONNET_4X  # legacy alias kept for non-Anthropic models below
 _OPUS_4X = {"input": 5.00, "output": 25.00, "cache_read": 0.50, "cache_write": 6.25, "reasoning": 5.00}
+_OPUS_LEGACY = {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75, "reasoning": 15.00}
 _FABLE_5 = {"input": 10.00, "output": 50.00, "cache_read": 1.00, "cache_write": 12.50, "reasoning": 10.00}
+# Sonnet 5 is on an introductory rate that expires 2026-08-31. On 2026-09-01 the
+# standard tier takes over — swap _SONNET_5 for _SONNET_5_STANDARD below and update
+# test_sonnet_5_uses_intro_pricing_until_2026_09_01. Note a single static table
+# can't price pre- and post-cutoff sessions differently; whichever tier is active
+# is applied to all history.
 _SONNET_5 = {"input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.50, "reasoning": 2.00}
+_SONNET_5_STANDARD = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75, "reasoning": 3.00}
 _GPT52 = {"input": 1.75, "output": 14.00, "cache_read": 0.88, "cache_write": 1.75, "reasoning": 1.75}
 _O_MINI = {"input": 1.10, "output": 4.40, "cache_read": 0.55, "cache_write": 1.10, "reasoning": 1.10}
 _DEEPSEEK_V3 = {"input": 0.27, "output": 1.10, "cache_read": 0.07, "cache_write": 0.27, "reasoning": 0.27}
@@ -41,12 +48,17 @@ MODEL_PRICING: dict[str, dict] = {
     "claude-fable-5": _FABLE_5,
     "claude-mythos-5": _FABLE_5,
     "claude-mythos-preview": _FABLE_5,
+    # Anthropic — Opus 5 ($5/$25 per MTok; same tier as Opus 4.5-4.8)
+    "claude-opus-5": _OPUS_4X,
     # Anthropic — Opus 4.x ($5/$25 per MTok; 4.5-4.8 share this tier)
-    # Note: Opus 4.1 and earlier used a higher $15/$75 tier (now deprecated).
     "claude-opus-4-8": _OPUS_4X,
     "claude-opus-4-7": _OPUS_4X,
     "claude-opus-4-6": _OPUS_4X,
     "claude-opus-4-5": _OPUS_4X,
+    # Anthropic — Opus 4.1 and 4.0 ($15/$75 per MTok, the pre-4.5 Opus tier).
+    # Deprecated models, but old sessions still log these strings.
+    "claude-opus-4-1": _OPUS_LEGACY,
+    "claude-opus-4-0": _OPUS_LEGACY,
     # Anthropic — Sonnet 5 (intro promo: $2/$10 through Aug 31 2026; rises to $3/$15 Sep 1)
     "claude-sonnet-5": _SONNET_5,
     # Anthropic — Sonnet 4.x ($3/$15 per MTok)
