@@ -19,5 +19,15 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // API response shapes are owned by the backend and intentionally typed as
+      // `any` on this side — see CLAUDE.md "TypeScript". Leaving this on errored
+      // on ~96 deliberate uses and drowned out every real finding.
+      '@typescript-eslint/no-explicit-any': 'off',
+      // Dev-only HMR ergonomics, not correctness. Several modules deliberately
+      // colocate a component with its constants or hook (TopBar/TABS, useTheme,
+      // I18nProvider) because the "Adding a tab" convention depends on it.
+      'react-refresh/only-export-components': 'warn',
+    },
   },
 ])

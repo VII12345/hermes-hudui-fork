@@ -60,17 +60,20 @@ FastAPI Backend (Python)
 ### Backend (`backend/`)
 
 - **`main.py`** — FastAPI app + CLI entry point. Sets `HERMES_HOME`, starts Uvicorn.
-- **`collectors/`** — One module per data domain (memory, skills, sessions, cron, projects, patterns, sudo). Each reads `~/.hermes/` and returns dataclasses from `models.py`.
-- **`models.py`** — All dataclasses (`HUDState`, `MemoryState`, `SkillsState`, etc.). `@property` fields are included in serialization.
-- **`serialize.py`** — `to_dict()` recursively converts dataclasses to JSON-safe dicts.
-- **`routes/`** — FastAPI route handlers that call collectors and return serialized data.
+- **`collectors/`** — One module per data domain (memory, skills, sessions, cron, projects, patterns, sudo). Each reads `~/.hermes/` and returns dataclasses from `collectors/models.py`.
+- **`collectors/models.py`** — All dataclasses (`HUDState`, `MemoryState`, `SkillsState`, etc.). `@property` fields are included in serialization.
+- **`models/replay.py`** — Replay dataclasses (`ReplayRun`, `ReplayEvent`, `RunReceipt`, …), kept out of `collectors/models.py` because Replay owns its own schema.
+- **`services/`** — Replay pipeline: `replay_normalizer.py`, `replay_redactor.py`, `replay_exporter.py`, `replay_signer.py`, `replay_verifier.py`, `replay_publisher.py`.
+- **`api/serialize.py`** — `to_dict()` recursively converts dataclasses to JSON-safe dicts.
+- **`api/`** — FastAPI route handlers that call collectors and return serialized data. One module per tab/domain.
 - **`api/memory.py`** — CRUD endpoints for memory editing. Uses `fcntl.flock` + atomic writes (`tempfile.mkstemp` → `os.replace`) matching hermes-agent's `MemoryStore` locking pattern.
 - **`api/sessions.py`** — Session search (title + FTS). Filters `source != 'tool'` to exclude HUD-generated sessions.
 - **`api/chat.py`** — Chat session CRUD, SSE streaming endpoint, cancel endpoint.
 - **`chat/engine.py`** — Singleton `ChatEngine` spawning `hermes chat -q <msg> -Q --source tool` per message. Captures `hermes_session_id` from stdout, queries `state.db` post-completion for tool calls and reasoning.
 - **`chat/streamer.py`** — SSE event emitter (`emit_token`, `emit_tool_start`, `emit_tool_end`, `emit_reasoning`, `emit_done`).
-- **`cache.py`** — Mtime-based cache invalidation (sessions 30s, skills 60s, patterns 60s, profiles 45s). Endpoints: `GET /api/cache/stats`, `POST /api/cache/clear`.
-- **`websocket.py`** — Watches `~/.hermes/` via `watchfiles`, broadcasts `data_changed` events. Frontend auto-refreshes via SWR mutation.
+- **`cache.py`** — Mtime-based cache invalidation (sessions 30s, skills 60s, patterns 60s, profiles 45s). Exposed by `api/cache.py` as `GET /api/cache/stats`, `POST /api/cache/clear`.
+- **`file_watcher.py`** — Watches `~/.hermes/` via `watchfiles` and maps changed paths to data types.
+- **`websocket_manager.py`** — Broadcasts `data_changed` events to connected clients. Frontend auto-refreshes via SWR mutation.
 
 ### Frontend (`frontend/src/`)
 
@@ -84,7 +87,7 @@ FastAPI Backend (Python)
 
 ## Key Conventions
 
-**Adding a tab:** Create collector in `backend/collectors/`, dataclass in `models.py`, route in `backend/routes/`, panel component with `useApi`, register in `TopBar.tsx` TABS + `App.tsx` TabContent/GRID_CLASS.
+**Adding a tab:** Create collector in `backend/collectors/`, dataclass in `backend/collectors/models.py`, route module in `backend/api/` (register its router in `main.py`), panel component with `useApi`, register in `TopBar.tsx` TABS + `App.tsx` TabContent/GRID_CLASS.
 
 **Chat engine:** Stateless per-message subprocess. No backend message persistence — history lives in localStorage. On server restart, ChatPanel re-creates backend sessions and migrates localStorage keys to new IDs.
 
@@ -92,7 +95,9 @@ FastAPI Backend (Python)
 
 **Styling:** Tailwind for layout, CSS variables (`var(--hud-*)`) for theming. Funnel Sans font. Four themes: `ai`, `blade-runner`, `fsociety`, `anime`.
 
-**TypeScript:** Use `any` for API response types — schema owned by backend.
+**TypeScript:** Use `any` for API response types — schema owned by backend. `@typescript-eslint/no-explicit-any` is turned off in `frontend/eslint.config.js` for exactly this reason; don't re-enable it without typing the API surface first.
+
+**Linting:** `cd frontend && npm run lint` must exit clean (0 errors). Remaining `react-refresh/only-export-components` and `react-hooks/exhaustive-deps` findings are warnings by design. CI does not yet run lint — run it before committing frontend changes.
 
 **Version strings:** Must stay in sync across `pyproject.toml`, `App.tsx` status bar, `BootScreen.tsx`, and `CHANGELOG.md`.
 

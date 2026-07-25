@@ -29,6 +29,9 @@ export function useWebSocket(): UseWebSocketReturn {
   const reconnectAttemptsRef = useRef(0)
   const healthRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastHealthRefreshRef = useRef(0)
+  // Reconnect calls back into `connect`; going through a ref keeps the callback
+  // from referencing its own binding before it is declared.
+  const connectRef = useRef<() => void>(() => {})
 
   const revalidateHealth = useCallback(() => {
     if (document.visibilityState === 'hidden') return
@@ -150,7 +153,7 @@ export function useWebSocket(): UseWebSocketReturn {
       reconnectAttemptsRef.current++
       
       reconnectTimeoutRef.current = setTimeout(() => {
-        connect()
+        connectRef.current()
       }, delay)
     }
 
@@ -159,6 +162,10 @@ export function useWebSocket(): UseWebSocketReturn {
     }
   }, [revalidateHealth])
 
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
+
   const sendMessage = useCallback((data: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(data)
@@ -166,6 +173,10 @@ export function useWebSocket(): UseWebSocketReturn {
   }, [])
 
   useEffect(() => {
+    // Opening the socket is the "subscribe to an external system" case this rule
+    // exempts; the setStatus('connecting') inside connect() is just the status
+    // indicator following the socket, not derived render state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     connect()
 
     // Heartbeat to keep connection alive
