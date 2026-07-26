@@ -3,24 +3,84 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from pathlib import Path
 from typing import Any
 
+from backend.services.replay_exporter import default_replay_dir
 from backend.services.replay_normalizer import _hash_payload
 from backend.services.replay_signer import verify_signature
 
+MAX_VERIFICATION_FILE_BYTES = 10 * 1024 * 1024
+_REPLAY_ID_RE = re.compile(r"^replay_[a-f0-9]{12}$")
+_VERIFICATION_FILENAMES = {
+    "receipt": "receipt.json",
+    "replay": "replay.redacted.json",
+}
 
-def _load_json(path: str) -> tuple[dict[str, Any] | None, str | None]:
+
+def _safe_replay_path(path: str, label: str) -> Path:
+    root = default_replay_dir().expanduser().resolve()
+    expected_filename = _VERIFICATION_FILENAMES[label]
+    supplied = path.strip()
+    if supplied.startswith("~/"):
+        supplied = f"{Path.home()}/{supplied[2:]}"
+    parts = supplied.split("/")
+    if (
+        len(parts) < 3
+        or parts[-3] != "runs"
+        or parts[-1] != expected_filename
+        or not _REPLAY_ID_RE.fullmatch(parts[-2])
+    ):
+        raise ValueError(
+            "Verification files must be inside the configured Replay directory"
+        )
+
+    replay_id = parts[-2]
+    candidate = (root / "runs" / replay_id / expected_filename).resolve(strict=False)
     try:
-        data = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            "Verification files must be inside the configured Replay directory"
+        ) from exc
+
+    relative_path = f"runs/{replay_id}/{expected_filename}"
+    if supplied not in {str(candidate), relative_path}:
+        raise ValueError(
+            "Verification files must be inside the configured Replay directory"
+        )
+    return candidate
+
+
+def _load_json(path: str, label: str) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        safe_path = _safe_replay_path(path, label)
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(safe_path, flags)
+        try:
+            size = os.fstat(descriptor).st_size
+            if size > MAX_VERIFICATION_FILE_BYTES:
+                return None, f"{label} is larger than {MAX_VERIFICATION_FILE_BYTES} bytes"
+            with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+                descriptor = -1
+                data = json.load(handle)
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+    except ValueError as exc:
+        return None, str(exc)
     except FileNotFoundError:
-        return None, f"File not found: {path}"
+        return None, f"{label} file was not found"
     except json.JSONDecodeError as exc:
-        return None, f"Invalid JSON in {path}: {exc}"
-    except OSError as exc:
-        return None, f"Could not read {path}: {exc}"
+        return None, f"Invalid JSON in {label}: line {exc.lineno}, column {exc.colno}"
+    except (OSError, UnicodeError):
+        return None, f"Could not read {label}"
     if not isinstance(data, dict):
-        return None, f"Expected JSON object in {path}"
+        return None, f"Expected JSON object in {label}"
     return data, None
 
 
@@ -28,15 +88,16 @@ def _receipt_hash(receipt: dict[str, Any]) -> str:
     payload = dict(receipt)
     for key in ["signature_algorithm", "signature", "public_key", "signed_at"]:
         payload.pop(key, None)
-    hashes = dict(payload.get("hashes") or {})
+    raw_hashes = payload.get("hashes")
+    hashes = dict(raw_hashes) if isinstance(raw_hashes, dict) else {}
     hashes["receipt_hash"] = None
     payload["hashes"] = hashes
     return _hash_payload(payload)
 
 
-def verify_replay_files(receipt_path: str, replay_path: str) -> dict[str, Any]:
-    receipt, receipt_error = _load_json(receipt_path)
-    replay_doc, replay_error = _load_json(replay_path)
+def _verify_replay_files(receipt_path: str, replay_path: str) -> dict[str, Any]:
+    receipt, receipt_error = _load_json(receipt_path, "receipt")
+    replay_doc, replay_error = _load_json(replay_path, "replay")
     errors = [error for error in [receipt_error, replay_error] if error]
     warnings: list[str] = []
 
@@ -101,3 +162,15 @@ def verify_replay_files(receipt_path: str, replay_path: str) -> dict[str, Any]:
         "signature_algorithm": receipt.get("signature_algorithm"),
         "signature_valid": bool(signature or public_key) and "Receipt signature is invalid." not in errors and "Unsupported signature algorithm." not in errors and "Incomplete signature fields." not in errors,
     }
+
+
+def verify_replay_files(receipt_path: str, replay_path: str) -> dict[str, Any]:
+    """Verify an exported Replay pair without allowing exceptions to escape."""
+    try:
+        return _verify_replay_files(receipt_path, replay_path)
+    except Exception:
+        return {
+            "ok": False,
+            "errors": ["Replay verification failed."],
+            "warnings": [],
+        }
